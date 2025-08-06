@@ -1,0 +1,5 @@
+Namespace(input_file='data/preprocessed_LLMTrans_fewshot.json', output_file='output/deepseek_coder-v2-Q8_0_llmtranTranslating: 0it [00:00, ?it/s]Translating: 350it [00:00, 29099.40it/s]
+05/25/2025 13:47:42 - INFO - __main__ - Translation results have been written to /work
+[GPU MEMORY] Peak allocated: 0.00 GB | Peak reserved: 0.00 GB
+
+[llama-cpp-python GPU USAGE] pid=2930949 | used_memory=18720 MiB | gpu=GPU-6412ea76-5359-8146-4af2-383e058bb576

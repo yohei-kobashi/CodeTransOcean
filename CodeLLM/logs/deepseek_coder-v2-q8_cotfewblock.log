@@ -1,0 +1,5 @@
+Namespace(input_file='data/preprocessed_multilingual_test_cotfewblock.json', output_file='output/deepseek_coder-v2Translating: 0it [00:00, ?it/s]Translating: 560it [00:00, 19689.26it/s]
+05/22/2025 18:39:14 - INFO - __main__ - Translation results have been written to /work/gj26/
+[GPU MEMORY] Peak allocated: 0.00 GB | Peak reserved: 0.00 GB
+
+[llama-cpp-python GPU USAGE] pid=3481200 | used_memory=18720 MiB | gpu=GPU-6412ea76-5359-8146-4af2-383e058bb576

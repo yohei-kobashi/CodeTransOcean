@@ -1,0 +1,5 @@
+Namespace(input_file='data/preprocessed_multilingual_test_cotfew.json', output_file='output/deepseek_coder-v2-q8_cTranslating: 0it [00:00, ?it/s]Translating: 159it [00:18,  8.80it/s]Translating: 289it [01:07,  3.92it/s]Translating: 439it [01:46,  3.84it/s]Translati
+[GPU MEMORY] Peak allocated: 0.00 GB | Peak reserved: 0.00 GB
+
+[llama-cpp-python GPU USAGE] pid=3481201 | used_memory=18984 MiB | gpu=GPU-6412ea76-5359-8146-4af2-383e058bb576
+Trans/output/deepseek_coder-v2-q8_cotfew.json.

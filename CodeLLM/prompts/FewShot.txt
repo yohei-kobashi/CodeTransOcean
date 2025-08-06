@@ -1,0 +1,8 @@
+You are a code translator.
+Your job is to translate code from {source_lang} to {target_lang}.
+
+{examples}
+
+Here is the {source_lang} code:
+{source_code}
+↓

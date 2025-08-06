@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/work/gj26/b20048/code_llm_evaluations/CodeTransOcean/MultilingualTrans/run_translation_deepseek_coder.py", line 190, in <module>
+    main()
+  File "/work/gj26/b20048/code_llm_evaluations/CodeTransOcean/MultilingualTrans/run_translation_deepseek_coder.py", line 144, in main
+    llm = load_gguf_model(args.gguf_path, args.n_gpu_layers, args.max_tokens)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/gj26/b20048/code_llm_evaluations/CodeTransOcean/MultilingualTrans/run_translation_deepseek_coder.py", line 73, in load_gguf_model
+    llm = Llama(model_path=gguf_path, n_gpu_layers=n_gpu_layers, n_ctx=n_ctx, verbose=False)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/gj26/b20048/open-r1/openr1/lib64/python3.11/site-packages/llama_cpp/llama.py", line 368, in __init__
+    raise ValueError(f"Model path does not exist: {model_path}")
+ValueError: Model path does not exist: models/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf

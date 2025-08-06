@@ -1,0 +1,10 @@
+You are a code translator.
+Your job is to translate code from {source_lang} to {target_lang}.
+
+Think step-by-step about the logic of the code and how you will map each part.
+
+{examples}
+
+Here is the {source_lang} code:
+{source_code}
+↓

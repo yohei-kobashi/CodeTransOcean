@@ -1,0 +1,8 @@
+transformers>=4.30.0
+vllm>=0.0.4
+llama-cpp-python>=0.1.62
+tqdm>=4.64.0
+datasets
+tensorboard
+tree_sitter
+evaluate

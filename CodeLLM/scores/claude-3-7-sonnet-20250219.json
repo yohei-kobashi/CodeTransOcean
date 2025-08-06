@@ -1,0 +1,289 @@
+{
+  "per_pair": {
+    "C_to_C++": {
+      "em": 0.0,
+      "bleu": 15.56,
+      "codebleu": 26.77
+    },
+    "PHP_to_C": {
+      "em": 0.0,
+      "bleu": 4.75,
+      "codebleu": 27.8
+    },
+    "PHP_to_C++": {
+      "em": 0.0,
+      "bleu": 4.31,
+      "codebleu": 22.84
+    },
+    "Java_to_Python": {
+      "em": 0.0,
+      "bleu": 2.63,
+      "codebleu": 21.7
+    },
+    "PHP_to_Java": {
+      "em": 0.0,
+      "bleu": 12.41,
+      "codebleu": 30.67
+    },
+    "C_to_VB": {
+      "em": 0.0,
+      "bleu": 5.34,
+      "codebleu": 29.72
+    },
+    "C++_to_Java": {
+      "em": 0.0,
+      "bleu": 13.93,
+      "codebleu": 35.59
+    },
+    "C#_to_Go": {
+      "em": 0.0,
+      "bleu": 12.93,
+      "codebleu": 31.47
+    },
+    "C_to_Python": {
+      "em": 0.0,
+      "bleu": 6.01,
+      "codebleu": 28.73
+    },
+    "C_to_Java": {
+      "em": 0.0,
+      "bleu": 17.6,
+      "codebleu": 40.53
+    },
+    "C++_to_C#": {
+      "em": 0.0,
+      "bleu": 25.55,
+      "codebleu": 46.15
+    },
+    "C#_to_C++": {
+      "em": 0.0,
+      "bleu": 8.91,
+      "codebleu": 33.29
+    },
+    "C++_to_Python": {
+      "em": 0.0,
+      "bleu": 8.67,
+      "codebleu": 27.89
+    },
+    "C_to_C#": {
+      "em": 0.0,
+      "bleu": 3.94,
+      "codebleu": 24.64
+    },
+    "Go_to_VB": {
+      "em": 0.0,
+      "bleu": 3.11,
+      "codebleu": 23.5
+    },
+    "C++_to_Go": {
+      "em": 0.0,
+      "bleu": 12.96,
+      "codebleu": 30.4
+    },
+    "PHP_to_Go": {
+      "em": 0.0,
+      "bleu": 10.43,
+      "codebleu": 31.34
+    },
+    "Python_to_VB": {
+      "em": 0.0,
+      "bleu": 8.32,
+      "codebleu": 29.09
+    },
+    "C#_to_VB": {
+      "em": 0.0,
+      "bleu": 18.24,
+      "codebleu": 32.66
+    },
+    "Go_to_Python": {
+      "em": 0.0,
+      "bleu": 2.86,
+      "codebleu": 22.57
+    },
+    "C++_to_VB": {
+      "em": 0.0,
+      "bleu": 6.82,
+      "codebleu": 28.73
+    },
+    "PHP_to_C#": {
+      "em": 0.0,
+      "bleu": 15.48,
+      "codebleu": 39.05
+    },
+    "PHP_to_Python": {
+      "em": 0.0,
+      "bleu": 3.45,
+      "codebleu": 16.57
+    },
+    "PHP_to_VB": {
+      "em": 0.0,
+      "bleu": 5.86,
+      "codebleu": 21.9
+    },
+    "C#_to_Java": {
+      "em": 0.0,
+      "bleu": 9.67,
+      "codebleu": 33.87
+    },
+    "Java_to_Go": {
+      "em": 0.0,
+      "bleu": 13.92,
+      "codebleu": 37.82
+    },
+    "C#_to_Python": {
+      "em": 0.0,
+      "bleu": 3.92,
+      "codebleu": 26.09
+    },
+    "Java_to_VB": {
+      "em": 0.0,
+      "bleu": 3.64,
+      "codebleu": 28.79
+    },
+    "C_to_Go": {
+      "em": 0.0,
+      "bleu": 17.78,
+      "codebleu": 31.81
+    },
+    "C++_to_C": {
+      "em": 0.0,
+      "bleu": 17.99,
+      "codebleu": 38.5
+    },
+    "C_to_PHP": {
+      "em": 0.0,
+      "bleu": 2.85,
+      "codebleu": 27.51
+    },
+    "C++_to_PHP": {
+      "em": 0.0,
+      "bleu": 0.96,
+      "codebleu": 25.35
+    },
+    "Python_to_Java": {
+      "em": 0.0,
+      "bleu": 5.49,
+      "codebleu": 23.63
+    },
+    "Java_to_PHP": {
+      "em": 0.0,
+      "bleu": 4.14,
+      "codebleu": 33.98
+    },
+    "VB_to_C": {
+      "em": 0.0,
+      "bleu": 5.6,
+      "codebleu": 27.73
+    },
+    "Java_to_C++": {
+      "em": 0.0,
+      "bleu": 21.41,
+      "codebleu": 35.99
+    },
+    "Go_to_C#": {
+      "em": 0.0,
+      "bleu": 7.54,
+      "codebleu": 26.05
+    },
+    "Python_to_C": {
+      "em": 0.0,
+      "bleu": 5.65,
+      "codebleu": 31.87
+    },
+    "Java_to_C": {
+      "em": 0.0,
+      "bleu": 5.1,
+      "codebleu": 27.66
+    },
+    "Python_to_C++": {
+      "em": 0.0,
+      "bleu": 10.29,
+      "codebleu": 30.07
+    },
+    "C#_to_C": {
+      "em": 0.0,
+      "bleu": 4.29,
+      "codebleu": 24.75
+    },
+    "VB_to_Go": {
+      "em": 0.0,
+      "bleu": 7.61,
+      "codebleu": 32.4
+    },
+    "Go_to_C++": {
+      "em": 0.0,
+      "bleu": 5.5,
+      "codebleu": 26.35
+    },
+    "Go_to_PHP": {
+      "em": 0.0,
+      "bleu": 4.26,
+      "codebleu": 25.05
+    },
+    "VB_to_Python": {
+      "em": 0.0,
+      "bleu": 2.15,
+      "codebleu": 22.68
+    },
+    "VB_to_C#": {
+      "em": 0.0,
+      "bleu": 14.38,
+      "codebleu": 36.11
+    },
+    "Python_to_Go": {
+      "em": 0.0,
+      "bleu": 5.54,
+      "codebleu": 31.08
+    },
+    "VB_to_C++": {
+      "em": 0.0,
+      "bleu": 3.0,
+      "codebleu": 21.72
+    },
+    "C#_to_PHP": {
+      "em": 0.0,
+      "bleu": 6.52,
+      "codebleu": 30.26
+    },
+    "Python_to_PHP": {
+      "em": 0.0,
+      "bleu": 11.02,
+      "codebleu": 33.09
+    },
+    "VB_to_PHP": {
+      "em": 0.0,
+      "bleu": 3.08,
+      "codebleu": 23.31
+    },
+    "Java_to_C#": {
+      "em": 0.0,
+      "bleu": 37.9,
+      "codebleu": 48.58
+    },
+    "Go_to_Java": {
+      "em": 0.0,
+      "bleu": 13.68,
+      "codebleu": 37.88
+    },
+    "Python_to_C#": {
+      "em": 0.0,
+      "bleu": 7.69,
+      "codebleu": 30.6
+    },
+    "VB_to_Java": {
+      "em": 0.0,
+      "bleu": 5.65,
+      "codebleu": 29.66
+    },
+    "Go_to_C": {
+      "em": 0.0,
+      "bleu": 7.08,
+      "codebleu": 26.98
+    }
+  },
+  "overall": {
+    "em": 0.0,
+    "bleu": 9.37,
+    "codebleu": 30.13
+  }
+}
