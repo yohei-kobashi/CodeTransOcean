@@ -1,20 +1,18 @@
 # Experiments based on CodeT5+
 
-We performed all experiments on the CodeT5+ `220M` model.
+We performed all experiments on the models which W.
 
 # How to Use?
 
 ## Environment
+Download the test datasets from https://drive.google.com/file/d/1xw6Edqf_nknKoei_LC49n4EtvNQezKGe/view and move to CodeTransOcean/CodeLLM/data.
 
 ```bash
-conda create -n codetransocean python=3.9
-conda activate codetransocean
-conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 pytorch-cuda=11.6 -c pytorch -c nvidia  # Please check your CUDA version.
-pip install transformers==4.25.1
-pip install datasets
-pip install tensorboard
-pip install tree_sitter
-pip install evaluate
+cd CodeTransOcean/CodeLLM
+python -m venv env
+source env/bin/activate
+pip3 install torch torchvision torchaudio # It depends on your environment.
+pip install -r requirements.txt
 ```
 
 ## Finetuning & Inference & Evaluation
