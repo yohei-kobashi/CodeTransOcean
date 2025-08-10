@@ -104,7 +104,7 @@ def load_vllm_model(model_name_or_path):
 
 def generate_vllm(prompt, llm, max_tokens=2048, temperature=0.2):
     params = SamplingParams(max_tokens=max_tokens, temperature=temperature,
-                            stop_sequences=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"])
+                            stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"])
     # vLLM returns a StreamingResponse; iterate to get the first result
     for res in llm.generate([prompt], sampling_params=params):
         # Each res corresponds to one prompt
