@@ -3,7 +3,8 @@
 """
 Translation script supporting HF Transformers, GGUF (llama-cpp-python), and vLLM.
 Batched generation for all backends (true batching for Transformers/vLLM; grouped loop for llama-cpp).
-Supports resuming: skips already translated samples if present in the output file.
+Robust resume: trims a partial line at the end of the output (if any), loads completed keys, skips processed items,
+and fsyncs periodically to minimize data loss on crashes.
 Prints peak GPU memory usage at the end (if CUDA is available).
 For GGUF/llama-cpp-python mode, also prints current GPU memory usage using nvidia-smi.
 """
@@ -46,7 +47,73 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ===== HF Transformers =====
+# =========================
+# Resume helpers
+# =========================
+def get_record_key(d: dict, key_field: str | None) -> str | None:
+    """Return a stable key for a record: prefer user-specified key_field, else id -> task_id -> source."""
+    if key_field and key_field in d:
+        return str(d[key_field])
+    for k in ("id", "task_id", "source"):
+        if k in d and d[k] is not None:
+            return str(d[k])
+    return None
+
+def repair_trailing_partial_line(path: str, tail_bytes: int = 1 << 16) -> None:
+    """If the output file ends with a partial (non-newline-terminated) JSON line, truncate it safely."""
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path, "rb+") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size == 0:
+                return
+            start = max(0, size - tail_bytes)
+            f.seek(start)
+            buf = f.read()
+            if not buf or buf.endswith(b"\n"):
+                return
+            last_nl = buf.rfind(b"\n")
+            if last_nl == -1:
+                # No newline in the tail chunk: truncate the file completely (very unlikely, but safest)
+                logger.warning("Output had a partial line without any newline in tail; truncating tail to 0 bytes.")
+                f.truncate(0)
+            else:
+                # Truncate to the last complete line
+                new_size = start + last_nl + 1
+                logger.warning("Output had a partial last line; truncating file to last complete newline.")
+                f.truncate(new_size)
+    except Exception as e:
+        logger.warning(f"Failed to inspect/repair output file tail: {e}")
+
+def load_existing_keys(output_file: str, key_field: str | None, require_prediction_field: bool) -> set[str]:
+    """
+    Load keys that have already been written to output.
+    If require_prediction_field=True, only count lines that contain a 'prediction' field.
+    """
+    existing: set[str] = set()
+    if not os.path.exists(output_file):
+        return existing
+    with open(output_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                # Ignore malformed (shouldn't exist after repair), treat as not processed
+                continue
+            if require_prediction_field and "prediction" not in d:
+                continue
+            key = get_record_key(d, key_field)
+            if key is not None:
+                existing.add(key)
+    return existing
+
+# =========================
+# HF Transformers
+# =========================
 def load_transformers_model(model_name_or_path, device):
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
     # Ensure pad_token is set (some causal models do not define it)
@@ -102,7 +169,9 @@ def generate_transformers_batch(prompts, tokenizer, model, max_tokens=2048, temp
         results.append(gen.strip())
     return results
 
-# ===== llama-cpp-python (GGUF) =====
+# =========================
+# llama-cpp-python (GGUF)
+# =========================
 def load_gguf_model(gguf_path, n_gpu_layers=32, n_ctx=2048):
     llm = Llama(model_path=gguf_path, n_gpu_layers=n_gpu_layers, n_ctx=n_ctx, verbose=False)
     return llm
@@ -126,7 +195,9 @@ def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
         results.append(text)
     return results
 
-# ===== vLLM =====
+# =========================
+# vLLM
+# =========================
 def load_vllm_model(model_name_or_path):
     # Launch vLLM for inference
     llm = VLLMModel(model=model_name_or_path)
@@ -154,21 +225,9 @@ def generate_vllm_batch(prompts, llm, max_tokens=2048, temperature=0.2):
             results.append("")
     return results
 
-# ===== Utilities =====
-def load_existing_predictions(output_file):
-    existing = set()
-    if os.path.exists(output_file):
-        with open(output_file, "r", encoding="utf-8") as fout:
-            for line in fout:
-                try:
-                    data = json.loads(line)
-                    if "source" in data and data.get("prediction"):
-                        existing.add(data["source"])
-                except Exception:
-                    continue
-    return existing
-
-
+# =========================
+# Utilities
+# =========================
 def print_gpu_memory_usage():
     if torch.cuda.is_available():
         max_alloc = torch.cuda.max_memory_allocated() / (1024**3)
@@ -205,10 +264,12 @@ def chunk_iterable(it, size):
     if buf:
         yield buf
 
-# ===== Main =====
+# =========================
+# Main
+# =========================
 def main():
     parser = argparse.ArgumentParser(
-        description="Translate using HF Transformers, GGUF, or vLLM; supports resuming and batched inference."
+        description="Translate using HF Transformers, GGUF, or vLLM; supports robust resume and batched inference."
     )
     parser.add_argument("--input_file", required=True, type=str)
     parser.add_argument("--output_file", required=True, type=str)
@@ -224,8 +285,17 @@ def main():
                         help="Device for HF transformers (e.g., 'cuda:0', 'cpu')")
     parser.add_argument("--n_gpu_layers", default=64, type=int,
                         help="GPU layers for llama-cpp (GGUF only)")
-    parser.add_argument("--batch_size", default=1024, type=int,
+    parser.add_argument("--batch_size", default=512, type=int,
                         help="Batch size for generation")
+    # Resume-related options
+    parser.add_argument("--resume", action="store_true", default=True,
+                        help="Resume from the existing output by skipping already processed records.")
+    parser.add_argument("--key_field", type=str, default=None,
+                        help="Field name to use as a unique key (fallback: id -> task_id -> source).")
+    parser.add_argument("--require_prediction_field", action="store_true", default=False,
+                        help="Only treat a line as completed if it has a 'prediction' field.")
+    parser.add_argument("--sync_interval", type=int, default=50,
+                        help="fsync the output file every N written lines (0 to disable).")
     args = parser.parse_args()
 
     # Choose backend
@@ -253,13 +323,24 @@ def main():
         backend = "transformers"
 
     logger.info(f"Using backend: {backend}")
-    existing = load_existing_predictions(args.output_file)
+
+    # Repair a potentially partial trailing line first (for robust resume)
+    if args.resume:
+        repair_trailing_partial_line(args.output_file)
+
+    # Load existing keys from the output (those are considered completed)
+    existing = load_existing_keys(
+        args.output_file,
+        key_field=args.key_field,
+        require_prediction_field=args.require_prediction_field,
+    )
+    logger.info(f"Found {len(existing)} completed records in existing output.")
 
     # Read all lines to enable clean batching while preserving order
     with open(args.input_file, "r", encoding="utf-8") as fin:
         raw_lines = [ln for ln in fin if ln.strip()]
 
-    # Pre-filter (skip invalid JSON or already predicted) and keep parallel arrays
+    # Pre-filter (skip invalid JSON or already completed) and keep parallel arrays
     records = []
     for line in raw_lines:
         try:
@@ -267,15 +348,24 @@ def main():
         except json.JSONDecodeError:
             logger.warning("Skipping invalid JSON line.")
             continue
-        prompt = data.get("source", "")
-        if not prompt or prompt in existing:
+        key = get_record_key(data, args.key_field)
+        if key is None:
+            logger.warning("Skipping a record without a usable key (id/task_id/source missing).")
             continue
+        if args.resume and key in existing:
+            continue
+        prompt = data.get("source", "")
+        if not prompt:
+            continue
+        # Keep the key on the record so we can add it if needed to the output
+        data["_key"] = key
         records.append((prompt, data))
 
     total = len(records)
     logger.info(f"Total remaining samples to translate: {total}")
 
     # Open output and process in batches
+    written_since_sync = 0
     with open(args.output_file, "a", encoding="utf-8") as fout:
         for batch in tqdm(list(chunk_iterable(records, args.batch_size)), desc="Translating (batched)"):
             prompts = [p for p, _ in batch]
@@ -295,8 +385,28 @@ def main():
             # Write outputs in the same order
             for (_, data), pred in zip(batch, gens):
                 data["prediction"] = pred
+                # Ensure the chosen key is present in the output (helps future resume)
+                if "_key" in data and ("id" not in data and "task_id" not in data and "source" not in data):
+                    data["id"] = data["_key"]
+                data.pop("_key", None)
+
                 fout.write(json.dumps(data, ensure_ascii=False) + "\n")
-            fout.flush()
+                written_since_sync += 1
+
+                if args.sync_interval and written_since_sync >= args.sync_interval:
+                    fout.flush()
+                    try:
+                        os.fsync(fout.fileno())
+                    except Exception:
+                        pass
+                    written_since_sync = 0
+
+        # Final flush/fsync
+        fout.flush()
+        try:
+            os.fsync(fout.fileno())
+        except Exception:
+            pass
 
     logger.info(f"Translation results have been written to {os.path.abspath(args.output_file)}.")
     print_gpu_memory_usage()
