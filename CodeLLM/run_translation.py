@@ -145,7 +145,7 @@ def generate_vllm_batch(prompts, llm, max_tokens=2048, temperature=0.2):
         stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"],
     )
     # vLLM returns a list of RequestOutput aligned with the input order
-    outputs = llm.generate(prompts, sampling_params=params)
+    outputs = llm.generate(prompts, sampling_params=params, n=8)
     results = []
     for res in outputs:
         if res.outputs:
