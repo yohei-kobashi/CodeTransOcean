@@ -224,7 +224,7 @@ def main():
                         help="Device for HF transformers (e.g., 'cuda:0', 'cpu')")
     parser.add_argument("--n_gpu_layers", default=64, type=int,
                         help="GPU layers for llama-cpp (GGUF only)")
-    parser.add_argument("--batch_size", default=128, type=int,
+    parser.add_argument("--batch_size", default=256, type=int,
                         help="Batch size for generation")
     args = parser.parse_args()
 
