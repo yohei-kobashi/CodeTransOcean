@@ -4,5 +4,5 @@ llama-cpp-python>=0.1.62
 tqdm>=4.64.0
 datasets
 tensorboard
-tree_sitter
+tree_sitter==0.1.1
 evaluate
