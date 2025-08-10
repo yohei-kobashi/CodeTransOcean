@@ -17,7 +17,7 @@ python run_translation.py --input_file data/preprocessed_multilingual_test.json 
 python run_translation.py --input_file data/preprocessed_multilingual_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_multilingual_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
 # python run_translation.py --input_file data/preprocessed_dl_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_dl.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
 # python run_translation.py --input_file data/preprocessed_dl_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_dl_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-python run_translation.py --input_file data/preprocessed_LLMTrans.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_LLMTrans.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-python run_translation.py --input_file data/preprocessed_LLMTrans_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_LLMTrans_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
+# python run_translation.py --input_file data/preprocessed_LLMTrans.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_LLMTrans.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
+# python run_translation.py --input_file data/preprocessed_LLMTrans_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_LLMTrans_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
 python run_translation.py --input_file data/preprocessed_niche_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_niche.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
 python run_translation.py --input_file data/preprocessed_niche_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_niche_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
