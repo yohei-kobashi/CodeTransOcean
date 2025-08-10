@@ -2,7 +2,7 @@
 # coding=utf-8
 """
 Translation script supporting HF Transformers, GGUF (llama-cpp-python), and vLLM.
-Uses --max_tokens for both context window and generation max tokens, to unify between backends.
+Batched generation for all backends (true batching for Transformers/vLLM; grouped loop for llama-cpp).
 Supports resuming: skips already translated samples if present in the output file.
 Prints peak GPU memory usage at the end (if CUDA is available).
 For GGUF/llama-cpp-python mode, also prints current GPU memory usage using nvidia-smi.
@@ -49,6 +49,9 @@ logger = logging.getLogger(__name__)
 # ===== HF Transformers =====
 def load_transformers_model(model_name_or_path, device):
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    # Ensure pad_token is set (some causal models do not define it)
+    if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
+        tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(
         model_name_or_path,
         torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
@@ -59,24 +62,45 @@ def load_transformers_model(model_name_or_path, device):
     return tokenizer, model
 
 
-def generate_transformers(prompt, tokenizer, model, max_tokens=2048, temperature=0.2, device=None):
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
+def generate_transformers_batch(prompts, tokenizer, model, max_tokens=2048, temperature=0.2, device=None):
+    """
+    True batched generation with Transformers.
+    Uses max_new_tokens to keep semantics stable across variable-length prompts.
+    """
+    if len(prompts) == 0:
+        return []
+
+    enc = tokenizer(
+        prompts,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+    )
     if device:
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-    input_len = inputs['input_ids'].shape[1]
-    max_length = min(input_len + max_tokens,
-                     getattr(model.config, "max_position_embeddings", 4096))
+        enc = {k: v.to(device) for k, v in enc.items()}
+
+    gen_kwargs = dict(
+        **enc,
+        do_sample=(temperature is not None and temperature > 0.0),
+        temperature=temperature,
+        max_new_tokens=max_tokens,
+        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+    )
     with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_length=max_length,
-            temperature=temperature,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-    generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    if generated.startswith(prompt):
-        generated = generated[len(prompt):]
-    return generated.strip()
+        outputs = model.generate(**gen_kwargs)
+
+    # Decode per item and attempt to remove the original prompt prefix
+    decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    results = []
+    for i, full in enumerate(decoded):
+        prefix = prompts[i]
+        if full.startswith(prefix):
+            gen = full[len(prefix):]
+        else:
+            # Fallback: leave as-is if exact prefix matching fails
+            gen = full
+        results.append(gen.strip())
+    return results
 
 # ===== llama-cpp-python (GGUF) =====
 def load_gguf_model(gguf_path, n_gpu_layers=32, n_ctx=2048):
@@ -84,16 +108,23 @@ def load_gguf_model(gguf_path, n_gpu_layers=32, n_ctx=2048):
     return llm
 
 
-def generate_gguf(prompt, llm, max_tokens=2048, temperature=0.2):
-    output = llm(
-        prompt,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"],
-        echo=False
-    )
-    text = output["choices"][0]["text"]
-    return text.strip()
+def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
+    """
+    llama-cpp-python currently lacks a native list-batch API in common versions.
+    Iterate within the batch and return outputs aligned with the input order.
+    """
+    results = []
+    for p in prompts:
+        out = llm(
+            p,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"],
+            echo=False
+        )
+        text = out["choices"][0]["text"].strip()
+        results.append(text)
+    return results
 
 # ===== vLLM =====
 def load_vllm_model(model_name_or_path):
@@ -102,15 +133,26 @@ def load_vllm_model(model_name_or_path):
     return llm
 
 
-def generate_vllm(prompt, llm, max_tokens=2048, temperature=0.2):
-    params = SamplingParams(max_tokens=max_tokens, temperature=temperature,
-                            stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"])
-    # vLLM returns a StreamingResponse; iterate to get the first result
-    for res in llm.generate([prompt], sampling_params=params):
-        # Each res corresponds to one prompt
+def generate_vllm_batch(prompts, llm, max_tokens=2048, temperature=0.2):
+    """
+    True batched generation with vLLM by passing a list of prompts.
+    """
+    if len(prompts) == 0:
+        return []
+    params = SamplingParams(
+        max_tokens=max_tokens,
+        temperature=temperature,
+        stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"],
+    )
+    # vLLM returns a list of RequestOutput aligned with the input order
+    outputs = llm.generate(prompts, sampling_params=params)
+    results = []
+    for res in outputs:
         if res.outputs:
-            return res.outputs[0].text.strip()
-    return ""
+            results.append(res.outputs[0].text.strip())
+        else:
+            results.append("")
+    return results
 
 # ===== Utilities =====
 def load_existing_predictions(output_file):
@@ -152,10 +194,21 @@ def print_llamacpp_gpu_usage():
     except Exception as e:
         print(f"\n[llama-cpp-python GPU USAGE] Could not obtain GPU usage: {e}")
 
+def chunk_iterable(it, size):
+    """Yield lists of up to `size` items from iterable `it` while preserving order."""
+    buf = []
+    for x in it:
+        buf.append(x)
+        if len(buf) == size:
+            yield buf
+            buf = []
+    if buf:
+        yield buf
+
 # ===== Main =====
 def main():
     parser = argparse.ArgumentParser(
-        description="Translate using HF Transformers, GGUF, or vLLM; supports resuming."
+        description="Translate using HF Transformers, GGUF, or vLLM; supports resuming and batched inference."
     )
     parser.add_argument("--input_file", required=True, type=str)
     parser.add_argument("--output_file", required=True, type=str)
@@ -164,13 +217,15 @@ def main():
     parser.add_argument("--gguf_path", default=None, type=str,
                         help="GGUF file path (for llama.cpp)")
     parser.add_argument("--vllm_path", default=None, type=str,
-                        help="vLLM model repo or path (for vLLM)" )
+                        help="vLLM model repo or path (for vLLM)")
     parser.add_argument("--max_tokens", default=8192, type=int)
     parser.add_argument("--temperature", default=0.2, type=float)
     parser.add_argument("--device", default=None, type=str,
                         help="Device for HF transformers (e.g., 'cuda:0', 'cpu')")
     parser.add_argument("--n_gpu_layers", default=64, type=int,
                         help="GPU layers for llama-cpp (GGUF only)")
+    parser.add_argument("--batch_size", default=8, type=int,
+                        help="Batch size for generation")
     args = parser.parse_args()
 
     # Choose backend
@@ -200,35 +255,47 @@ def main():
     logger.info(f"Using backend: {backend}")
     existing = load_existing_predictions(args.output_file)
 
-    with open(args.input_file, "r", encoding="utf-8") as fin, \
-         open(args.output_file, "a", encoding="utf-8") as fout:
-        for line in tqdm(fin, desc="Translating"):
-            if not line.strip():
-                continue
-            try:
-                data = json.loads(line)
-            except json.JSONDecodeError:
-                logger.warning("Skipping invalid JSON line.")
-                continue
-            prompt = data.get("source", "")
-            if not prompt or prompt in existing:
-                continue
+    # Read all lines to enable clean batching while preserving order
+    with open(args.input_file, "r", encoding="utf-8") as fin:
+        raw_lines = [ln for ln in fin if ln.strip()]
+
+    # Pre-filter (skip invalid JSON or already predicted) and keep parallel arrays
+    records = []
+    for line in raw_lines:
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            logger.warning("Skipping invalid JSON line.")
+            continue
+        prompt = data.get("source", "")
+        if not prompt or prompt in existing:
+            continue
+        records.append((prompt, data))
+
+    total = len(records)
+    logger.info(f"Total remaining samples to translate: {total}")
+
+    # Open output and process in batches
+    with open(args.output_file, "a", encoding="utf-8") as fout:
+        for batch in tqdm(list(chunk_iterable(records, args.batch_size)), desc="Translating (batched)"):
+            prompts = [p for p, _ in batch]
             try:
                 if backend == "gguf":
-                    translation = generate_gguf(prompt, llm, args.max_tokens, args.temperature)
+                    gens = generate_gguf_batch(prompts, llm, args.max_tokens, args.temperature)
                 elif backend == "vllm":
-                    translation = generate_vllm(prompt, llm, args.max_tokens, args.temperature)
+                    gens = generate_vllm_batch(prompts, llm, args.max_tokens, args.temperature)
                 else:
-                    translation = generate_transformers(
-                        prompt, tokenizer, model,
-                        args.max_tokens, args.temperature, args.device
-                    )
+                    gens = generate_transformers_batch(prompts, tokenizer, model,
+                                                       args.max_tokens, args.temperature, args.device)
             except Exception as e:
-                logger.error(f"Error during generation: {e}")
+                logger.error(f"Error during batch generation: {e}")
                 traceback.print_exc()
-                translation = ""
-            data["prediction"] = translation
-            fout.write(json.dumps(data, ensure_ascii=False) + "\n")
+                gens = [""] * len(prompts)
+
+            # Write outputs in the same order
+            for (_, data), pred in zip(batch, gens):
+                data["prediction"] = pred
+                fout.write(json.dumps(data, ensure_ascii=False) + "\n")
             fout.flush()
 
     logger.info(f"Translation results have been written to {os.path.abspath(args.output_file)}.")
