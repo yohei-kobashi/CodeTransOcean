@@ -142,8 +142,7 @@ def generate_vllm_batch(prompts, llm, max_tokens=2048, temperature=0.2):
     params = SamplingParams(
         max_tokens=max_tokens,
         temperature=temperature,
-        stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"],
-        n=8,
+        stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"]
     )
     # vLLM returns a list of RequestOutput aligned with the input order
     outputs = llm.generate(prompts, sampling_params=params)
@@ -225,7 +224,7 @@ def main():
                         help="Device for HF transformers (e.g., 'cuda:0', 'cpu')")
     parser.add_argument("--n_gpu_layers", default=64, type=int,
                         help="GPU layers for llama-cpp (GGUF only)")
-    parser.add_argument("--batch_size", default=8, type=int,
+    parser.add_argument("--batch_size", default=128, type=int,
                         help="Batch size for generation")
     args = parser.parse_args()
 
