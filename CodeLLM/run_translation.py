@@ -63,29 +63,12 @@ def repair_trailing_partial_line(path: str, tail_bytes: int = 1 << 16) -> None:
     """If the output file ends with a partial (non-newline-terminated) JSON line, truncate it safely."""
     if not os.path.exists(path):
         return
+    data = list(open(path).readlines())
     try:
-        with open(path, "rb+") as f:
-            f.seek(0, os.SEEK_END)
-            size = f.tell()
-            if size == 0:
-                return
-            start = max(0, size - tail_bytes)
-            f.seek(start)
-            buf = f.read()
-            if not buf or buf.endswith(b"\n"):
-                return
-            last_nl = buf.rfind(b"\n")
-            if last_nl == -1:
-                # No newline in the tail chunk: truncate the file completely (very unlikely, but safest)
-                logger.warning("Output had a partial line without any newline in tail; truncating tail to 0 bytes.")
-                f.truncate(0)
-            else:
-                # Truncate to the last complete line
-                new_size = start + last_nl + 1
-                logger.warning("Output had a partial last line; truncating file to last complete newline.")
-                f.truncate(new_size)
-    except Exception as e:
-        logger.warning(f"Failed to inspect/repair output file tail: {e}")
+        json.loads(data[-1])
+    except:
+        open(path, "w").write("\n".join(data[:-1]))
+        logger.warning("Output had a partial last line; truncating file to last complete newline.")
 
 def load_existing_keys(output_file: str, key_field: str | None, require_prediction_field: bool) -> set[str]:
     """
