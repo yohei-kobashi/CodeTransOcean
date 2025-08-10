@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q rt_HG
 #PBS -l select=1
-#PBS -l walltime=8:00:00
+#PBS -l walltime=12:00:00
 #PBS -P gcb50389
 
 module purge
