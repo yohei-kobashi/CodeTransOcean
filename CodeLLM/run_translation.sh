@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q rt_HG
 #PBS -l select=1
-#PBS -l walltime=12:00:00
+#PBS -l walltime=36:00:00
 #PBS -P gcb50389
 
 module purge
@@ -14,7 +14,7 @@ source env_vllm/bin/activate
 cd CodeTransOcean/CodeLLM
 
 # python run_translation.py --input_file data/preprocessed_multilingual_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_multilingual.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-python run_translation.py --input_file data/preprocessed_multilingual_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_multilingual_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
+# python run_translation.py --input_file data/preprocessed_multilingual_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_multilingual_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
 # python run_translation.py --input_file data/preprocessed_dl_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_dl.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
 # python run_translation.py --input_file data/preprocessed_dl_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_dl_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
 # python run_translation.py --input_file data/preprocessed_LLMTrans.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_LLMTrans.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
