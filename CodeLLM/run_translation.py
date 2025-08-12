@@ -183,7 +183,14 @@ def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
 # =========================
 def load_vllm_model(model_name_or_path):
     # Launch vLLM for inference
-    llm = VLLMModel(model=model_name_or_path)
+    llm = VLLMModel(
+        model=model_name_or_path,
+        gpu_memory_utilization=0.95,
+        kv_cache_dtype="fp8",
+        max_num_batched_tokens=16384,
+        max_num_seqs=64,
+        enable_chunked_prefill=True
+    )
     return llm
 
 
