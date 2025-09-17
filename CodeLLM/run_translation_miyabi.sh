@@ -22,6 +22,7 @@ export CUDAHOSTCXX="$CXX"
 export PYTHONNOUSERSITE=1
 cd CodeTransOcean/CodeLLM
 
+python run_translation.py --input_file data/preprocessed_niche_test_sampled_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_niche_sampled_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct --batch_size 256 --enforce-eager
 # python run_translation.py --input_file data/preprocessed_multilingual_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_0826_multilingual.json --vllm_path /work/go25/share/model/Qwen3-Coder-30B-A3B-Instruct-mcore-hf_code_trans_489pairs_0826 --batch_size 256 --enforce-eager
 python run_translation.py --input_file data/preprocessed_multilingual_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_0826_multilingual_base.json --vllm_path /work/go25/share/model/Qwen3-Coder-30B-A3B-Instruct-mcore-hf_code_trans_489pairs_0826 --batch_size 256 --enforce-eager
 # python run_translation.py --input_file data/preprocessed_dl_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_0826_dl.json --vllm_path /work/go25/share/model/Qwen3-Coder-30B-A3B-Instruct-mcore-hf_code_trans_489pairs_0826 --batch_size 256 --enforce-eager
