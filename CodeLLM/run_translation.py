@@ -181,7 +181,7 @@ def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
 # =========================
 # vLLM
 # =========================
-def load_vllm_model(model_name_or_path):
+def load_vllm_model(model_name_or_path, enforce_eager: bool = False):
     # Launch vLLM for inference
     llm = VLLMModel(
         model=model_name_or_path,
@@ -189,7 +189,8 @@ def load_vllm_model(model_name_or_path):
         kv_cache_dtype="fp8",
         max_num_batched_tokens=32768,
         max_num_seqs=128,
-        enable_chunked_prefill=True
+        enable_chunked_prefill=True,
+        enforce_eager=enforce_eager,
     )
     return llm
 
@@ -277,6 +278,8 @@ def main():
                         help="GPU layers for llama-cpp (GGUF only)")
     parser.add_argument("--batch_size", default=512, type=int,
                         help="Batch size for generation")
+    parser.add_argument("--enforce-eager", action="store_true", default=False,
+                        help="vLLMをeagerモードで強制実行（ARM64/TRITON非対応環境向け）")
     # Resume-related options
     parser.add_argument("--resume", action="store_true", default=True,
                         help="Resume from the existing output by skipping already processed records.")
@@ -293,7 +296,7 @@ def main():
         if not VLLM_AVAILABLE:
             logger.error("vLLM is not installed. Please install with: pip install vllm")
             sys.exit(1)
-        llm = load_vllm_model(args.vllm_path)
+        llm = load_vllm_model(args.vllm_path, enforce_eager=args.enforce_eager)
         tokenizer, model = None, None
         backend = "vllm"
     elif args.gguf_path:
