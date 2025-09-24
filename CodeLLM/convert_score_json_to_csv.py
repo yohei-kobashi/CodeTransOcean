@@ -6,7 +6,7 @@ output = []
 for json_file in glob.glob("scores/*.json"):
     print(json_file)
     data = json.load(open(json_file))
-    for score_name in ["blue", "codeblue", "DSR"]:
+    for score_name in ["bleu", "codebleu", "DSR"]:
         if not score_name in data["overall"]:
             continue
         output.append([json_file, "overall", score_name, data["overall"][score_name]])
