@@ -12,5 +12,5 @@ for json_file in glob.glob("scores/*.json"):
         for pair,v in data["per_pair"].items():
             output.append([json_file, pair, score_name, data["per_pair"][pair][score_name]])
 
-csv.writer(open("scores/all_scores.tsv"), delimiter="\t").writerows(output)
+csv.writer(open("scores/all_scores.tsv", "w"), delimiter="\t").writerows(output)
             
