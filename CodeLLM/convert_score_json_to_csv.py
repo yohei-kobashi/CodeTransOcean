@@ -4,6 +4,7 @@ import glob
 
 output = []
 for json_file in glob.glob("scores/*.json"):
+    print(json_file)
     data = json.load(open(json_file))
     for score_name in ["blue", "codeblue", "DSR"]:
         if not score_name in data["overall"]:
