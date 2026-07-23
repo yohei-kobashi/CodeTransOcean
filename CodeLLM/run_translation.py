@@ -258,15 +258,28 @@ def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
 # =========================
 # vLLM
 # =========================
+<<<<<<< HEAD
 def load_vllm_model(model_name_or_path, max_model_len=32768,
                     gpu_memory_utilization=0.95, kv_cache_dtype="auto"):
+=======
+def load_vllm_model(model_name_or_path, enforce_eager: bool = False):
+>>>>>>> bdee9547c25eb669e8ba9de89af2734cb937a281
     # Launch vLLM for inference
     kwargs = dict(
         model=model_name_or_path,
+<<<<<<< HEAD
         gpu_memory_utilization=gpu_memory_utilization,
         max_model_len=max_model_len,
         max_num_batched_tokens=max_model_len,
         enable_chunked_prefill=True,
+=======
+        gpu_memory_utilization=0.95,
+        kv_cache_dtype="fp8",
+        max_num_batched_tokens=32768,
+        max_num_seqs=128,
+        enable_chunked_prefill=True,
+        enforce_eager=enforce_eager,
+>>>>>>> bdee9547c25eb669e8ba9de89af2734cb937a281
     )
     if kv_cache_dtype != "auto":
         kwargs["kv_cache_dtype"] = kv_cache_dtype
@@ -373,6 +386,7 @@ def main():
                         help="GPU layers for llama-cpp (GGUF only)")
     parser.add_argument("--batch_size", default=512, type=int,
                         help="Batch size for generation")
+<<<<<<< HEAD
     parser.add_argument("--enable_thinking", action="store_true",
                         help="Enable Qwen thinking mode (disabled by default for direct translations).")
     parser.add_argument("--raw_prompt", action="store_true",
@@ -385,6 +399,10 @@ def main():
                         help="Fraction of GPU memory available to vLLM.")
     parser.add_argument("--kv_cache_dtype", default="auto", choices=("auto", "fp8", "fp8_e4m3"),
                         help="vLLM KV-cache dtype. 'auto' is portable; FP8 requires supported hardware.")
+=======
+    parser.add_argument("--enforce-eager", action="store_true", default=False,
+                        help="vLLMをeagerモードで強制実行（ARM64/TRITON非対応環境向け）")
+>>>>>>> bdee9547c25eb669e8ba9de89af2734cb937a281
     # Resume-related options
     parser.add_argument("--resume", action="store_true", default=True,
                         help="Resume from the existing output by skipping already processed records.")
@@ -402,12 +420,16 @@ def main():
         if not VLLM_AVAILABLE:
             logger.error("vLLM is not installed. Please install with: pip install vllm")
             sys.exit(1)
+<<<<<<< HEAD
         llm = load_vllm_model(
             args.vllm_path,
             max_model_len=args.max_model_len,
             gpu_memory_utilization=args.gpu_memory_utilization,
             kv_cache_dtype=args.kv_cache_dtype,
         )
+=======
+        llm = load_vllm_model(args.vllm_path, enforce_eager=args.enforce_eager)
+>>>>>>> bdee9547c25eb669e8ba9de89af2734cb937a281
         tokenizer, model = None, None
         backend = "vllm"
     elif args.gguf_path:
