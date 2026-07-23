@@ -1,0 +1,5 @@
+# Qwen3.5 currently requires unreleased support from the main/nightly branches.
+# Install this file in a fresh environment matching the CUDA/PyTorch version.
+transformers @ git+https://github.com/huggingface/transformers.git@main
+--extra-index-url https://wheels.vllm.ai/nightly
+vllm

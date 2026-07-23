@@ -92,7 +92,10 @@ def main():
         prompt_path = os.path.join('prompts', args.prompt_name + '.txt')
         try:
             with open(prompt_path, 'r', encoding='utf-8') as pf:
-                prompt_template = pf.read()
+                # A text file's final newline is formatting, not part of the
+                # model instruction. CodeGeeX builds the user content without
+                # an extra newline after source_code.
+                prompt_template = pf.read().rstrip()
         except FileNotFoundError:
             logger.error(f"Prompt file not found: {prompt_path}")
             return
@@ -155,6 +158,14 @@ def main():
 
                 json_data['source'] = source_prompt
                 json_data['target'] = target
+                # Keep task metadata explicitly. This avoids recovering language
+                # names or source code from the rendered prompt during evaluation,
+                # and lets inference wrap the prompt in a model chat template
+                # without consulting the target/reference code.
+                json_data['source_lang'] = source_lang
+                json_data['target_lang'] = target_lang
+                json_data['source_code'] = code_snippet
+                json_data['prompt_name'] = args.prompt_name
 
                 group_dict.setdefault((source_lang, target_lang), []).append(json_data)
 

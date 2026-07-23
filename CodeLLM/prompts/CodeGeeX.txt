@@ -1,0 +1,4 @@
+Your task is to carefully translate the following {source_lang} code into {target_lang}.
+The translated code MUST preserve exactly the same functionality as the original.
+Here is the {source_lang} code:
+{source_code}

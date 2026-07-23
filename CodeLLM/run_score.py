@@ -29,9 +29,9 @@ import random
 import subprocess
 import sys
 
-from evaluator.CodeBLEU import calc_code_bleu
 # We'll use nltk's BLEU for our evaluation. Ensure nltk is installed.
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+from translation_utils import preprocess_source_code
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -52,6 +52,10 @@ def main():
     parser.add_argument('--naive', action='store_true', help="Use source code as hypothesis instead of prediction.")
     args = parser.parse_args()
 
+    calc_code_bleu = None
+    if args.codebleu:
+        from evaluator.CodeBLEU import calc_code_bleu
+
     # Containers for overall evaluation
     overall_dev_accs = []
     overall_hypotheses = []
@@ -64,27 +68,51 @@ def main():
     with open(args.input_file, 'r', encoding='utf-8') as f:
         for line in f:
             json_data = json.loads(line)
-            # Extract languages from the source prompt using regex.
-            matches = re.search(r"^Translate (\S+) to (\S+): ", json_data['source'])
-            if not matches:
-                matches = re.search(r"Here is the \S+ code:", json_data['source'])
-                if not matches:
+            # New preprocessed files carry explicit metadata. Fall back to
+            # parsing legacy prompts so existing result files remain usable.
+            source_lang = json_data.get('source_lang')
+            target_lang = json_data.get('target_lang')
+            source_code = json_data.get('source_code')
+            prompt = json_data.get('source', '')
+
+            if not source_lang or not target_lang:
+                language_patterns = (
+                    r"^Translate (\S+) to (\S+): ",
+                    r"Your job is to translate code from (\S+) to (\S+)\.",
+                    r"Your task is to carefully translate the following (\S+) code into (\S+)\.",
+                )
+                language_match = next(
+                    (m for pattern in language_patterns
+                     if (m := re.search(pattern, prompt))),
+                    None,
+                )
+                if language_match is None:
+                    logger.warning("Skipping a record whose language pair cannot be determined.")
                     continue
-                langs = re.search(r"Your job is to translate code from (\S+) to (\S+)\.", json_data['source'])
-                source_lang, target_lang = langs.groups()
-            else:
-                source_lang, target_lang = matches.groups()
-            # Remove the prefix to obtain the original source code.
-            source_code = json_data['source'][matches.end():]
+                source_lang, target_lang = language_match.groups()
+
+            if source_code is None:
+                code_match = re.search(
+                    rf"Here is the {re.escape(source_lang)} code:\s*\n?",
+                    prompt,
+                )
+                if code_match:
+                    source_code = prompt[code_match.end():]
+                else:
+                    legacy_match = re.search(
+                        rf"^Translate {re.escape(source_lang)} to "
+                        rf"{re.escape(target_lang)}: ",
+                        prompt,
+                    )
+                    source_code = prompt[legacy_match.end():] if legacy_match else prompt
             # Check if this sample is in the specified language lists.
             if source_lang in args.source_names.split(',') and target_lang in args.target_names.split(','):
                 # Depending on args.naive, choose hypothesis as the source code or the model's prediction.
                 if args.naive:
-                    hypothesis = source_code
-                    dev_acc = (source_code == json_data['target'].strip())
+                    hypothesis = preprocess_source_code(source_code)
+                    dev_acc = (hypothesis == json_data['target'].strip())
                 else:
-                    hypothesis = re.sub("```\n.*$", "", re.sub("^.*?```[^\n]+\n", "", json_data['prediction'], flags= re.MULTILINE | re.DOTALL), flags= re.MULTILINE | re.DOTALL).strip()
-                    hypothesis = hypothesis.replace("```", "").strip()
+                    hypothesis = preprocess_source_code(json_data.get('prediction', ''))
                     dev_acc = (hypothesis == json_data['target'].strip())
                 reference = json_data['target'].strip()
                 output = json_data.get('output', '')

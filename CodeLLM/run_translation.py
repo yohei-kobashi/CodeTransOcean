@@ -25,7 +25,15 @@ LLAMACPP_AVAILABLE = False
 VLLM_AVAILABLE = False
 
 try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+    try:
+        from transformers import AutoModelForImageTextToText
+    except ImportError:
+        AutoModelForImageTextToText = None
+    try:
+        from transformers import AutoModelForMultimodalLM
+    except ImportError:
+        AutoModelForMultimodalLM = None
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     pass
@@ -46,6 +54,10 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+CODEGEEX_SYSTEM_PROMPT = (
+    "You are an expert software engineer proficient in a wide range of programming languages."
+)
 
 # =========================
 # Resume helpers
@@ -98,21 +110,81 @@ def load_existing_keys(output_file: str, key_field: str | None, require_predicti
 # HF Transformers
 # =========================
 def load_transformers_model(model_name_or_path, device):
-    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
     # Ensure pad_token is set (some causal models do not define it)
     if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
         tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name_or_path,
-        torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto" if torch.cuda.is_available() else None,
-        trust_remote_code=True,
-    )
+    # Decoder-only batched generation must be left padded. Right padding can make
+    # generation continue from a pad token for shorter prompts.
+    tokenizer.padding_side = "left"
+
+    use_cuda = torch.cuda.is_available() and device != "cpu"
+    load_kwargs = {
+        "torch_dtype": torch.bfloat16 if use_cuda else torch.float32,
+        "device_map": device or ("auto" if use_cuda else None),
+        "trust_remote_code": True,
+    }
+    try:
+        config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
+        model_type = getattr(config, "model_type", "")
+        if model_type == "qwen3_5":
+            model_cls = AutoModelForMultimodalLM or AutoModelForImageTextToText
+            if model_cls is None:
+                raise ValueError("qwen3_5 is not supported by this Transformers version")
+        else:
+            model_cls = AutoModelForCausalLM
+        model = model_cls.from_pretrained(model_name_or_path, **load_kwargs)
+    except (KeyError, ValueError) as exc:
+        if "qwen3_5" in str(exc).lower() or "qwen3.5" in model_name_or_path.lower():
+            raise RuntimeError(
+                "This Transformers installation does not support Qwen3.5. "
+                "Install the latest Transformers from its main branch as documented "
+                "by Qwen (see requirements-qwen35.txt)."
+            ) from exc
+        raise
     model.eval()
     return tokenizer, model
 
 
-def generate_transformers_batch(prompts, tokenizer, model, max_tokens=2048, temperature=0.2, device=None):
+def format_chat_prompts(prompts, tokenizer, enable_thinking=False, use_chat_template=True,
+                        system_prompt=CODEGEEX_SYSTEM_PROMPT):
+    """Format plain user prompts for instruct/chat models."""
+    if not use_chat_template:
+        return prompts
+    if not getattr(tokenizer, "chat_template", None):
+        logger.warning("Tokenizer has no chat template; using raw prompts.")
+        return prompts
+
+    formatted = []
+    for prompt in prompts:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        kwargs = {
+            "tokenize": False,
+            "add_generation_prompt": True,
+        }
+        # Qwen3/Qwen3.5 accept this template argument. Other templates generally
+        # ignore extra kwargs, but retry without it for strict custom templates.
+        try:
+            text = tokenizer.apply_chat_template(
+                messages,
+                enable_thinking=enable_thinking,
+                **kwargs,
+            )
+        except TypeError:
+            text = tokenizer.apply_chat_template(
+                messages,
+                **kwargs,
+            )
+        formatted.append(text)
+    return formatted
+
+
+def generate_transformers_batch(prompts, tokenizer, model, max_tokens=2048, temperature=0.2,
+                                device=None, enable_thinking=False, use_chat_template=True,
+                                system_prompt=CODEGEEX_SYSTEM_PROMPT):
     """
     True batched generation with Transformers.
     Uses max_new_tokens to keep semantics stable across variable-length prompts.
@@ -120,37 +192,42 @@ def generate_transformers_batch(prompts, tokenizer, model, max_tokens=2048, temp
     if len(prompts) == 0:
         return []
 
+    model_prompts = format_chat_prompts(
+        prompts, tokenizer, enable_thinking=enable_thinking,
+        use_chat_template=use_chat_template,
+        system_prompt=system_prompt,
+    )
     enc = tokenizer(
-        prompts,
+        model_prompts,
         return_tensors="pt",
         padding=True,
         truncation=True,
     )
-    if device:
-        enc = {k: v.to(device) for k, v in enc.items()}
+    input_device = device or model.device
+    enc = {k: v.to(input_device) for k, v in enc.items()}
 
     gen_kwargs = dict(
         **enc,
         do_sample=(temperature is not None and temperature > 0.0),
-        temperature=temperature,
         max_new_tokens=max_tokens,
-        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+        pad_token_id=(
+            tokenizer.pad_token_id
+            if tokenizer.pad_token_id is not None
+            else tokenizer.eos_token_id
+        ),
     )
+    if gen_kwargs["do_sample"]:
+        gen_kwargs["temperature"] = temperature
     with torch.no_grad():
         outputs = model.generate(**gen_kwargs)
 
-    # Decode per item and attempt to remove the original prompt prefix
-    decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-    results = []
-    for i, full in enumerate(decoded):
-        prefix = prompts[i]
-        if full.startswith(prefix):
-            gen = full[len(prefix):]
-        else:
-            # Fallback: leave as-is if exact prefix matching fails
-            gen = full
-        results.append(gen.strip())
-    return results
+    # generate() returns prompt + completion. Slice by the padded token width;
+    # string-prefix removal is unreliable after chat templating/tokenization.
+    generated_ids = outputs[:, enc["input_ids"].shape[1]:]
+    return [
+        text.strip()
+        for text in tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    ]
 
 # =========================
 # llama-cpp-python (GGUF)
@@ -181,32 +258,51 @@ def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
 # =========================
 # vLLM
 # =========================
-def load_vllm_model(model_name_or_path):
+def load_vllm_model(model_name_or_path, max_model_len=32768,
+                    gpu_memory_utilization=0.95, kv_cache_dtype="auto"):
     # Launch vLLM for inference
-    llm = VLLMModel(
+    kwargs = dict(
         model=model_name_or_path,
-        gpu_memory_utilization=0.95,
-        kv_cache_dtype="fp8",
-        max_num_batched_tokens=32768,
-        max_num_seqs=128,
-        enable_chunked_prefill=True
+        gpu_memory_utilization=gpu_memory_utilization,
+        max_model_len=max_model_len,
+        max_num_batched_tokens=max_model_len,
+        enable_chunked_prefill=True,
     )
+    if kv_cache_dtype != "auto":
+        kwargs["kv_cache_dtype"] = kv_cache_dtype
+    try:
+        llm = VLLMModel(**kwargs)
+    except (KeyError, ValueError, RuntimeError) as exc:
+        if "qwen3_5" in str(exc).lower() or "qwen3.5" in model_name_or_path.lower():
+            raise RuntimeError(
+                "Failed to load Qwen3.5 with vLLM. Qwen3.5 requires a recent "
+                "vLLM nightly build; see requirements-qwen35.txt."
+            ) from exc
+        raise
     return llm
 
 
-def generate_vllm_batch(prompts, llm, max_tokens=2048, temperature=0.2):
+def generate_vllm_batch(prompts, llm, max_tokens=2048, temperature=0.2,
+                        enable_thinking=False, use_chat_template=True,
+                        system_prompt=CODEGEEX_SYSTEM_PROMPT):
     """
     True batched generation with vLLM by passing a list of prompts.
     """
     if len(prompts) == 0:
         return []
+    tokenizer = llm.get_tokenizer()
+    model_prompts = format_chat_prompts(
+        prompts, tokenizer, enable_thinking=enable_thinking,
+        use_chat_template=use_chat_template,
+        system_prompt=system_prompt,
+    )
     params = SamplingParams(
         max_tokens=max_tokens,
         temperature=temperature,
         stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"]
     )
     # vLLM returns a list of RequestOutput aligned with the input order
-    outputs = llm.generate(prompts, sampling_params=params)
+    outputs = llm.generate(model_prompts, sampling_params=params)
     results = []
     for res in outputs:
         if res.outputs:
@@ -277,6 +373,18 @@ def main():
                         help="GPU layers for llama-cpp (GGUF only)")
     parser.add_argument("--batch_size", default=512, type=int,
                         help="Batch size for generation")
+    parser.add_argument("--enable_thinking", action="store_true",
+                        help="Enable Qwen thinking mode (disabled by default for direct translations).")
+    parser.add_argument("--raw_prompt", action="store_true",
+                        help="Do not apply the tokenizer's chat template.")
+    parser.add_argument("--no_system_prompt", action="store_true",
+                        help="Omit the CodeGeeX-compatible system message from the chat template.")
+    parser.add_argument("--max_model_len", default=32768, type=int,
+                        help="vLLM context length. A smaller value reduces KV-cache memory.")
+    parser.add_argument("--gpu_memory_utilization", default=0.95, type=float,
+                        help="Fraction of GPU memory available to vLLM.")
+    parser.add_argument("--kv_cache_dtype", default="auto", choices=("auto", "fp8", "fp8_e4m3"),
+                        help="vLLM KV-cache dtype. 'auto' is portable; FP8 requires supported hardware.")
     # Resume-related options
     parser.add_argument("--resume", action="store_true", default=True,
                         help="Resume from the existing output by skipping already processed records.")
@@ -287,13 +395,19 @@ def main():
     parser.add_argument("--sync_interval", type=int, default=50,
                         help="fsync the output file every N written lines (0 to disable).")
     args = parser.parse_args()
+    system_prompt = None if args.no_system_prompt else CODEGEEX_SYSTEM_PROMPT
 
     # Choose backend
     if args.vllm_path:
         if not VLLM_AVAILABLE:
             logger.error("vLLM is not installed. Please install with: pip install vllm")
             sys.exit(1)
-        llm = load_vllm_model(args.vllm_path)
+        llm = load_vllm_model(
+            args.vllm_path,
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            kv_cache_dtype=args.kv_cache_dtype,
+        )
         tokenizer, model = None, None
         backend = "vllm"
     elif args.gguf_path:
@@ -363,10 +477,19 @@ def main():
                 if backend == "gguf":
                     gens = generate_gguf_batch(prompts, llm, args.max_tokens, args.temperature)
                 elif backend == "vllm":
-                    gens = generate_vllm_batch(prompts, llm, args.max_tokens, args.temperature)
+                    gens = generate_vllm_batch(
+                        prompts, llm, args.max_tokens, args.temperature,
+                        enable_thinking=args.enable_thinking,
+                        use_chat_template=not args.raw_prompt,
+                        system_prompt=system_prompt,
+                    )
                 else:
-                    gens = generate_transformers_batch(prompts, tokenizer, model,
-                                                       args.max_tokens, args.temperature, args.device)
+                    gens = generate_transformers_batch(
+                        prompts, tokenizer, model, args.max_tokens, args.temperature,
+                        args.device, enable_thinking=args.enable_thinking,
+                        use_chat_template=not args.raw_prompt,
+                        system_prompt=system_prompt,
+                    )
             except Exception as e:
                 logger.error(f"Error during batch generation: {e}")
                 traceback.print_exc()

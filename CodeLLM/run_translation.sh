@@ -13,11 +13,8 @@ export CUDA_VISIBLE_DEVICES=$(
 source env_vllm/bin/activate
 cd CodeTransOcean/CodeLLM
 
-# python run_translation.py --input_file data/preprocessed_multilingual_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_multilingual.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-# python run_translation.py --input_file data/preprocessed_multilingual_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_multilingual_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-# python run_translation.py --input_file data/preprocessed_dl_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_dl.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-# python run_translation.py --input_file data/preprocessed_dl_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_dl_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-# python run_translation.py --input_file data/preprocessed_LLMTrans.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_LLMTrans.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-# python run_translation.py --input_file data/preprocessed_LLMTrans_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_LLMTrans_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-python run_translation.py --input_file data/preprocessed_niche_test.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_niche.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
-python run_translation.py --input_file data/preprocessed_niche_test_base.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_niche_base.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
+# python run_translation.py --input_file data/preprocessed_multilingual_test_codegeex.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_multilingual_codegeex.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
+# python run_translation.py --input_file data/preprocessed_dl_test_codegeex.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_dl_codegeex.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
+# python run_translation.py --input_file data/preprocessed_LLMTrans_codegeex.json --output_file output/Qwen3-Coder-30B-A3B-Instruct_LLMTrans_codegeex.json --vllm_path Qwen/Qwen3-Coder-30B-A3B-Instruct
+python run_translation.py --input_file data/preprocessed_niche_test_codegeex.json --output_file output/Qwen/Qwen3.5-4B_niche_codegeex.json --vllm_path Qwen/Qwen3.5-4B
+python run_translation.py --input_file data/preprocessed_niche_test_codegeex.json --output_file output/Qwen/Qwen3.5-9B_niche_codegeex.json --vllm_path Qwen/Qwen3.5-9B
