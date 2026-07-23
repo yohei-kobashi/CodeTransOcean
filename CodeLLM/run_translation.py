@@ -155,18 +155,35 @@ def format_chat_prompts(prompts, tokenizer, enable_thinking=False, use_chat_temp
         logger.warning("Tokenizer has no chat template; using raw prompts.")
         return prompts
 
-    formatted = []
+    conversations = []
     for prompt in prompts:
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        kwargs = {
-            "tokenize": False,
-            "add_generation_prompt": True,
-        }
-        # Qwen3/Qwen3.5 accept this template argument. Other templates generally
-        # ignore extra kwargs, but retry without it for strict custom templates.
+        conversations.append(messages)
+
+    kwargs = {
+        "tokenize": False,
+        "add_generation_prompt": True,
+    }
+    # Recent tokenizers render a list of conversations in one call, avoiding
+    # Python/Jinja call overhead for large offline batches.
+    try:
+        rendered = tokenizer.apply_chat_template(
+            conversations,
+            enable_thinking=enable_thinking,
+            **kwargs,
+        )
+        if isinstance(rendered, list) and len(rendered) == len(prompts):
+            return rendered
+    except (TypeError, ValueError):
+        pass
+
+    formatted = []
+    for messages in conversations:
+        # Qwen3/Qwen3.5 accept enable_thinking. Retry without it for strict
+        # templates belonging to other model families.
         try:
             text = tokenizer.apply_chat_template(
                 messages,
@@ -184,7 +201,8 @@ def format_chat_prompts(prompts, tokenizer, enable_thinking=False, use_chat_temp
 
 def generate_transformers_batch(prompts, tokenizer, model, max_tokens=2048, temperature=0.2,
                                 device=None, enable_thinking=False, use_chat_template=True,
-                                system_prompt=CODEGEEX_SYSTEM_PROMPT):
+                                system_prompt=CODEGEEX_SYSTEM_PROMPT, top_p=1.0, top_k=0,
+                                min_p=0.0, repetition_penalty=1.0, seed=42):
     """
     True batched generation with Transformers.
     Uses max_new_tokens to keep semantics stable across variable-length prompts.
@@ -217,7 +235,18 @@ def generate_transformers_batch(prompts, tokenizer, model, max_tokens=2048, temp
         ),
     )
     if gen_kwargs["do_sample"]:
-        gen_kwargs["temperature"] = temperature
+        gen_kwargs.update(
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            min_p=min_p,
+        )
+        if seed is not None:
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+    if repetition_penalty != 1.0:
+        gen_kwargs["repetition_penalty"] = repetition_penalty
     with torch.no_grad():
         outputs = model.generate(**gen_kwargs)
 
@@ -237,7 +266,8 @@ def load_gguf_model(gguf_path, n_gpu_layers=32, n_ctx=2048):
     return llm
 
 
-def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
+def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2,
+                        top_p=1.0, top_k=0, repetition_penalty=1.0, seed=42):
     """
     llama-cpp-python currently lacks a native list-batch API in common versions.
     Iterate within the batch and return outputs aligned with the input order.
@@ -248,6 +278,10 @@ def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
             p,
             max_tokens=max_tokens,
             temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            repeat_penalty=repetition_penalty,
+            seed=seed if seed is not None else -1,
             stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"],
             echo=False
         )
@@ -258,31 +292,34 @@ def generate_gguf_batch(prompts, llm, max_tokens=2048, temperature=0.2):
 # =========================
 # vLLM
 # =========================
-<<<<<<< HEAD
 def load_vllm_model(model_name_or_path, max_model_len=32768,
-                    gpu_memory_utilization=0.95, kv_cache_dtype="auto"):
-=======
-def load_vllm_model(model_name_or_path, enforce_eager: bool = False):
->>>>>>> bdee9547c25eb669e8ba9de89af2734cb937a281
+                    gpu_memory_utilization=0.95, kv_cache_dtype="auto",
+                    max_num_batched_tokens=32768, max_num_seqs=512,
+                    tensor_parallel_size=1, enforce_eager=False,
+                    enable_prefix_caching=False, language_model_only=False,
+                    mtp_tokens=0):
     # Launch vLLM for inference
     kwargs = dict(
         model=model_name_or_path,
-<<<<<<< HEAD
         gpu_memory_utilization=gpu_memory_utilization,
         max_model_len=max_model_len,
-        max_num_batched_tokens=max_model_len,
+        max_num_batched_tokens=max_num_batched_tokens,
+        max_num_seqs=max_num_seqs,
         enable_chunked_prefill=True,
-=======
-        gpu_memory_utilization=0.95,
-        kv_cache_dtype="fp8",
-        max_num_batched_tokens=32768,
-        max_num_seqs=128,
-        enable_chunked_prefill=True,
+        tensor_parallel_size=tensor_parallel_size,
         enforce_eager=enforce_eager,
->>>>>>> bdee9547c25eb669e8ba9de89af2734cb937a281
+        enable_prefix_caching=enable_prefix_caching,
     )
     if kv_cache_dtype != "auto":
         kwargs["kv_cache_dtype"] = kv_cache_dtype
+    if language_model_only:
+        kwargs["language_model_only"] = True
+    if mtp_tokens:
+        kwargs["speculative_config"] = {
+            "method": "qwen3_next_mtp",
+            "num_speculative_tokens": mtp_tokens,
+        }
+    logger.info("vLLM engine arguments: %s", kwargs)
     try:
         llm = VLLMModel(**kwargs)
     except (KeyError, ValueError, RuntimeError) as exc:
@@ -297,7 +334,9 @@ def load_vllm_model(model_name_or_path, enforce_eager: bool = False):
 
 def generate_vllm_batch(prompts, llm, max_tokens=2048, temperature=0.2,
                         enable_thinking=False, use_chat_template=True,
-                        system_prompt=CODEGEEX_SYSTEM_PROMPT):
+                        system_prompt=CODEGEEX_SYSTEM_PROMPT, top_p=1.0, top_k=0,
+                        min_p=0.0, presence_penalty=0.0,
+                        repetition_penalty=1.0, seed=42):
     """
     True batched generation with vLLM by passing a list of prompts.
     """
@@ -312,6 +351,12 @@ def generate_vllm_batch(prompts, llm, max_tokens=2048, temperature=0.2,
     params = SamplingParams(
         max_tokens=max_tokens,
         temperature=temperature,
+        top_p=top_p,
+        top_k=top_k,
+        min_p=min_p,
+        presence_penalty=presence_penalty,
+        repetition_penalty=repetition_penalty,
+        seed=seed,
         stop=["<|endoftext|>", "</s>", "<|EOT|>", "<|im_end|>"]
     )
     # vLLM returns a list of RequestOutput aligned with the input order
@@ -380,13 +425,20 @@ def main():
                         help="vLLM model repo or path (for vLLM)")
     parser.add_argument("--max_tokens", default=8192, type=int)
     parser.add_argument("--temperature", default=0.2, type=float)
+    parser.add_argument("--top_p", default=1.0, type=float)
+    parser.add_argument("--top_k", default=0, type=int)
+    parser.add_argument("--min_p", default=0.0, type=float)
+    parser.add_argument("--presence_penalty", default=0.0, type=float,
+                        help="vLLM sampling penalty; ignored by Transformers/GGUF.")
+    parser.add_argument("--repetition_penalty", default=1.0, type=float)
+    parser.add_argument("--seed", default=42, type=int,
+                        help="Per-request sampling seed (default: 42).")
     parser.add_argument("--device", default=None, type=str,
                         help="Device for HF transformers (e.g., 'cuda:0', 'cpu')")
     parser.add_argument("--n_gpu_layers", default=64, type=int,
                         help="GPU layers for llama-cpp (GGUF only)")
     parser.add_argument("--batch_size", default=512, type=int,
                         help="Batch size for generation")
-<<<<<<< HEAD
     parser.add_argument("--enable_thinking", action="store_true",
                         help="Enable Qwen thinking mode (disabled by default for direct translations).")
     parser.add_argument("--raw_prompt", action="store_true",
@@ -399,10 +451,20 @@ def main():
                         help="Fraction of GPU memory available to vLLM.")
     parser.add_argument("--kv_cache_dtype", default="auto", choices=("auto", "fp8", "fp8_e4m3"),
                         help="vLLM KV-cache dtype. 'auto' is portable; FP8 requires supported hardware.")
-=======
-    parser.add_argument("--enforce-eager", action="store_true", default=False,
-                        help="vLLMをeagerモードで強制実行（ARM64/TRITON非対応環境向け）")
->>>>>>> bdee9547c25eb669e8ba9de89af2734cb937a281
+    parser.add_argument("--max_num_batched_tokens", default=32768, type=int,
+                        help="Maximum tokens scheduled per vLLM iteration; increase for throughput.")
+    parser.add_argument("--max_num_seqs", default=512, type=int,
+                        help="Maximum sequences scheduled concurrently by vLLM.")
+    parser.add_argument("--tensor_parallel_size", default=1, type=int,
+                        help="Number of GPUs used for tensor parallelism.")
+    parser.add_argument("--enforce_eager", "--enforce-eager", action="store_true",
+                        help="Disable CUDA graphs. Slower; use only for compatibility/debugging.")
+    parser.add_argument("--enable_prefix_caching", action="store_true",
+                        help="Enable vLLM automatic prefix caching.")
+    parser.add_argument("--language_model_only", action="store_true",
+                        help="Skip Qwen3.5 vision encoder loading/profiling for text-only translation.")
+    parser.add_argument("--mtp_tokens", default=0, type=int,
+                        help="Qwen3.5 MTP speculative tokens (0 disables speculative decoding).")
     # Resume-related options
     parser.add_argument("--resume", action="store_true", default=True,
                         help="Resume from the existing output by skipping already processed records.")
@@ -414,22 +476,38 @@ def main():
                         help="fsync the output file every N written lines (0 to disable).")
     args = parser.parse_args()
     system_prompt = None if args.no_system_prompt else CODEGEEX_SYSTEM_PROMPT
+    if args.batch_size <= 0 or args.max_num_seqs <= 0 or args.max_num_batched_tokens <= 0:
+        parser.error("batch_size, max_num_seqs, and max_num_batched_tokens must be positive.")
+    if args.mtp_tokens < 0:
+        parser.error("mtp_tokens must be non-negative.")
+    if not 0.0 <= args.top_p <= 1.0 or not 0.0 <= args.min_p <= 1.0:
+        parser.error("top_p and min_p must be between 0 and 1.")
+    if not -2.0 <= args.presence_penalty <= 2.0:
+        parser.error("presence_penalty must be between -2 and 2.")
+    if args.repetition_penalty <= 0:
+        parser.error("repetition_penalty must be positive.")
+
+    output_dir = os.path.dirname(os.path.abspath(args.output_file))
+    os.makedirs(output_dir, exist_ok=True)
 
     # Choose backend
     if args.vllm_path:
         if not VLLM_AVAILABLE:
             logger.error("vLLM is not installed. Please install with: pip install vllm")
             sys.exit(1)
-<<<<<<< HEAD
         llm = load_vllm_model(
             args.vllm_path,
             max_model_len=args.max_model_len,
             gpu_memory_utilization=args.gpu_memory_utilization,
             kv_cache_dtype=args.kv_cache_dtype,
+            max_num_batched_tokens=args.max_num_batched_tokens,
+            max_num_seqs=args.max_num_seqs,
+            tensor_parallel_size=args.tensor_parallel_size,
+            enforce_eager=args.enforce_eager,
+            enable_prefix_caching=args.enable_prefix_caching,
+            language_model_only=args.language_model_only,
+            mtp_tokens=args.mtp_tokens,
         )
-=======
-        llm = load_vllm_model(args.vllm_path, enforce_eager=args.enforce_eager)
->>>>>>> bdee9547c25eb669e8ba9de89af2734cb937a281
         tokenizer, model = None, None
         backend = "vllm"
     elif args.gguf_path:
@@ -493,17 +571,32 @@ def main():
     # Open output and process in batches
     written_since_sync = 0
     with open(args.output_file, "a", encoding="utf-8") as fout:
-        for batch in tqdm(list(chunk_iterable(records, args.batch_size)), desc="Translating (batched)"):
+        batch_starts = range(0, total, args.batch_size)
+        for start in tqdm(
+            batch_starts,
+            total=(total + args.batch_size - 1) // args.batch_size,
+            desc="Translating (batched)",
+        ):
+            batch = records[start:start + args.batch_size]
             prompts = [p for p, _ in batch]
             try:
                 if backend == "gguf":
-                    gens = generate_gguf_batch(prompts, llm, args.max_tokens, args.temperature)
+                    gens = generate_gguf_batch(
+                        prompts, llm, args.max_tokens, args.temperature,
+                        args.top_p, args.top_k, args.repetition_penalty, args.seed,
+                    )
                 elif backend == "vllm":
                     gens = generate_vllm_batch(
                         prompts, llm, args.max_tokens, args.temperature,
                         enable_thinking=args.enable_thinking,
                         use_chat_template=not args.raw_prompt,
                         system_prompt=system_prompt,
+                        top_p=args.top_p,
+                        top_k=args.top_k,
+                        min_p=args.min_p,
+                        presence_penalty=args.presence_penalty,
+                        repetition_penalty=args.repetition_penalty,
+                        seed=args.seed,
                     )
                 else:
                     gens = generate_transformers_batch(
@@ -511,6 +604,11 @@ def main():
                         args.device, enable_thinking=args.enable_thinking,
                         use_chat_template=not args.raw_prompt,
                         system_prompt=system_prompt,
+                        top_p=args.top_p,
+                        top_k=args.top_k,
+                        min_p=args.min_p,
+                        repetition_penalty=args.repetition_penalty,
+                        seed=args.seed,
                     )
             except Exception as e:
                 logger.error(f"Error during batch generation: {e}")
